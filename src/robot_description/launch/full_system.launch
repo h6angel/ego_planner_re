@@ -1,0 +1,80 @@
+<launch>
+  <!-- ========== 0. 参数 ========== -->
+  <arg name="world_name" default="$(find robot_description)/worlds/simple_world.world"/>
+  <arg name="x_pos" default="0.0"/>
+  <arg name="y_pos" default="0.0"/>
+  <arg name="z_pos" default="0.5"/>
+
+  <arg name="map_frame" default="map"/>
+  <arg name="odom_frame" default="odom"/>
+  <arg name="base_frame" default="base_link"/>
+
+  <arg name="ego_odom_topic" default="/legOdom"/>
+
+  <!-- ========== 1. 启动 Gazebo ========== -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world_name)"/>
+    <arg name="paused" value="false"/>
+    <arg name="use_sim_time" value="true"/>
+    <arg name="gui" value="true"/>
+    <arg name="headless" value="false"/>
+    <arg name="debug" value="false"/>
+  </include>
+
+  <!-- ========== 2. 加载机器人模型 ========== -->
+  <param name="robot_description"
+         command="$(find xacro)/xacro $(find robot_description)/urdf/wheel_legged_robot.urdf"/>
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
+        respawn="false" output="screen"/>
+
+  <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher"/>
+
+  <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model"
+        args="-param robot_description -urdf -model wheel_legged_robot 
+              -x $(arg x_pos) -y $(arg y_pos) -z $(arg z_pos)"
+        respawn="false" output="screen"/>
+
+  <!-- ========== 3. TF & 里程计 ========== -->
+
+  <!-- 3.1 map -> odom 静态变换 -->
+  <node pkg="tf" type="static_transform_publisher" name="map_to_odom"
+        args="0 0 0 0 0 0 $(arg map_frame) $(arg odom_frame) 100"/>
+
+  <!-- 3.2 /gazebo/model_states -> /legOdom + odom -> base_link -->
+  <node pkg="robot_description"
+        type="tf_odom_publisher.py"
+        name="tf_odom_publisher"
+        output="screen">
+    <param name="model_name" value="wheel_legged_robot"/>
+    <param name="odom_frame" value="$(arg odom_frame)"/>
+    <param name="base_frame" value="$(arg base_frame)"/>
+  </node>
+
+  <!-- ========== 4. 点云重映射到 ego_planner 使用的话题 ========== -->
+  <!-- 根据实际激光话题修改 /velodyne_points -->
+  <node pkg="topic_tools" type="relay" name="velodyne_to_egoplanner_cloud"
+        args="/velodyne_points /pcl_render_node/cloud" />
+
+  <!-- ========== 5. 启动 EGO-Planner ========== -->
+  <include file="$(find ego_planner)/launch/simple_run.launch">
+    <arg name="odom_topic" value="$(arg ego_odom_topic)"/>
+  </include>
+
+  <!-- ========== 6. 轨迹跟踪器：/planning/bspline + /legOdom -> /cmd_vel ========== -->
+  <node pkg="robot_description"
+        type="trajectory_tracker.py"
+        name="trajectory_tracker"
+        output="screen">
+    <param name="bspline_topic" value="/planning/bspline"/>
+    <param name="odom_topic" value="$(arg ego_odom_topic)"/>
+    <param name="cmd_topic" value="/cmd_vel"/>
+    <param name="traj_frame" value="$(arg map_frame)"/>
+
+    <param name="max_linear_speed" value="0.6"/>
+    <param name="max_angular_speed" value="1.2"/>
+    <param name="goal_threshold" value="0.3"/>
+    <param name="yaw_threshold" value="0.3"/>
+  </node>
+
+</launch>

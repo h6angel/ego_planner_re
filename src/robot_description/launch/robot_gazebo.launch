@@ -1,0 +1,43 @@
+<launch>
+  <!-- 参数 -->
+  <arg name="paused" default="false"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="gui" default="true"/>
+  <arg name="headless" default="false"/>
+  <arg name="debug" default="false"/>
+  <arg name="world_name" default="$(find robot_description)/worlds/empty.world"/>
+
+  <!-- 启动 Gazebo -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world_name)"/>
+    <arg name="debug" value="$(arg debug)"/>
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="headless" value="$(arg headless)"/>
+  </include>
+
+  <!-- 加载机器人 URDF -->
+  <param name="robot_description" command="$(find xacro)/xacro $(find robot_description)/urdf/wheel_legged_robot.urdf"/>
+
+  <!-- 发布机器人状态 -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" respawn="false" output="screen">
+    <param name="publish_frequency" type="double" value="50.0"/>
+    <param name="use_tf_static" type="bool" value="true"/>
+  </node>
+
+  <!-- 联合状态发布器 -->
+  <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher">
+    <param name="use_gui" value="false"/>
+  </node>
+
+  <!-- 生成机器人到 Gazebo -->
+  <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" 
+        args="-param robot_description -urdf -model wheel_legged_robot -x 0 -y 0 -z 0.5" 
+        respawn="false" output="screen"/>
+
+  <!-- 发布 TF 坐标变换 -->
+  <node pkg="tf" type="static_transform_publisher" name="map_to_odom" 
+        args="0 0 0 0 0 0 map odom 100"/>
+
+</launch>
