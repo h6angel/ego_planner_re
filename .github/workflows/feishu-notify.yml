@@ -1,0 +1,45 @@
+name: Feishu Notify
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - agent
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send push notification to Feishu
+        if: github.event_name == 'push'
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+        run: |
+          MSG="New push to repository: ${{ github.repository }} on branch: ${{ github.ref_name }} by: ${{ github.actor }}.
+
+          Commit message: ${{ github.event.head_commit.message }}
+          View Commit: ${{ github.event.head_commit.url }}"
+          
+          payload=$(jq -n --arg text "$MSG" '{msg_type:"text",content:{text:$text}}')
+          curl -sS -X POST "$FEISHU_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$payload"
+
+      - name: Send PR notification to Feishu
+        if: github.event_name == 'pull_request'
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+        run: |
+          MSG="Pull request ${{ github.event.action }} in repository: ${{ github.repository }} by: ${{ github.actor }}.
+
+          Title: ${{ github.event.pull_request.title }}
+          Branch: ${{ github.event.pull_request.head.ref }} -> ${{ github.event.pull_request.base.ref }}
+          View PR: ${{ github.event.pull_request.html_url }}"
+          
+          payload=$(jq -n --arg text "$MSG" '{msg_type:"text",content:{text:$text}}')
+          curl -sS -X POST "$FEISHU_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$payload"
